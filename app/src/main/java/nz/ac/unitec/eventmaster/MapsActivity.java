@@ -38,24 +38,37 @@ import com.google.android.gms.maps.model.MarkerOptions;
 import com.google.android.gms.tasks.OnCompleteListener;
 import com.google.android.gms.tasks.Task;
 import com.sothree.slidinguppanel.SlidingUpPanelLayout;
+import com.ticketmaster.api.discovery.operation.SearchEventsOperation;
+import com.ticketmaster.api.discovery.response.PagedResponse;
+import com.ticketmaster.discovery.model.Events;
+
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 
+import nz.ac.unitec.eventmaster.model.Event;
 
 
 public class MapsActivity extends FragmentActivity implements OnMapReadyCallback {
 
+    private ArrayList<Event> events = new ArrayList<>();
+
+
     private class MyArrayAdapter extends ArrayAdapter<String> {
 
+
         HashMap<String, Integer> mIdMap = new HashMap<String, Integer>();
+
 
         public MyArrayAdapter(Context context, int textViewResourceId,
                               List<String> objects) {
@@ -106,14 +119,6 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
     }
 
 
-    /**
-     * Manipulates the map once available.
-     * This callback is triggered when the map is ready to be used.
-     * This is where we can add markers or lines, add listeners or move the camera.
-     * If Google Play services is not installed on the device, the user will be prompted to install
-     * it inside the SupportMapFragment. This method will only be triggered once the user has
-     * installed Google Play services and returned to the app.
-     */
     @Override
     public void onMapReady(GoogleMap googleMap) {
 
@@ -159,6 +164,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
     private void updateView() {
 
+
         /// Run current location request
         LocationRequest req = new LocationRequest();
         req.setInterval(10000);
@@ -173,7 +179,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         },null);
 
         try {
-            Task<Location> location = client.getLastLocation();
+            final Task<Location> location = client.getLastLocation();
             list.clear();
             markers.clear();
             progressBar.setVisibility(View.VISIBLE);
@@ -206,56 +212,53 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                         if (addresses.size() > 0) {
                             city = addresses.get(0).getLocality();
                             System.out.println(city);
-                            String url = "https://app.ticketmaster.com/discovery/v2/events.json?city=" + city + "&apikey=mzOuM4tYy3IrWOM3sOHsGaABAsHWNCo3";
-                            JsonObjectRequest jsObjRequest = new JsonObjectRequest
-                                    (Request.Method.GET, url, null, new Response.Listener<JSONObject>() {
+                            Date c = Calendar.getInstance().getTime();
+                            System.out.println("Current time => " + c);
+                            SimpleDateFormat df = new SimpleDateFormat("dd-MMM-yyyy");
+                            String startDateTime = df.format(c);
+                            //String url = "https://app.ticketmaster.com/discovery/v2/events.json?city=" + city + "&apikey=mzOuM4tYy3IrWOM3sOHsGaABAsHWNCo3";
+                            String url = "https://app.ticketmaster.com/discovery/v2/events.json?countryCode=IE&size=133&startDateTime=2018-03-19T17:52:00Z&endDateTime=2018-03-26T17:53:00Z&apikey=mzOuM4tYy3IrWOM3sOHsGaABAsHWNCo3";
+                            JsonObjectRequest jsObjRequest = new JsonObjectRequest(Request.Method.GET, url, (JSONObject) null, new Response.Listener<JSONObject>() {
                                         @Override
                                         public void onResponse(JSONObject response) {
                                             progressBar.setVisibility(View.INVISIBLE);
                                             /// Parse JSON
                                             try {
                                                 JSONObject embedded = response.getJSONObject("_embedded");
-                                                JSONArray events = embedded.getJSONArray("events");
-                                                int length = events.length();
+                                                JSONArray eventsRequested = embedded.getJSONArray("events");
+                                                int length = eventsRequested.length();
                                                 for (int index = 0; index < length; index++) {
-                                                    JSONObject event = events.getJSONObject(index);
-                                                    String eventName = event.getString("name");
-                                                    JSONObject dates = event.getJSONObject("dates");
+                                                    JSONObject Tevent = eventsRequested.getJSONObject(index);
+                                                    String eventName = Tevent.getString("name");
+                                                    System.out.println("eventName:" + eventName);
+                                                    JSONObject dates = Tevent.getJSONObject("dates");
                                                     JSONObject start = dates.getJSONObject("start");
                                                     String startDateTime = start.getString("dateTime");
+                                                    JSONObject venueEvent = Tevent.getJSONObject("_embedded");
+                                                    JSONArray venues = venueEvent.getJSONArray("venues");
 
-                                                    String currency = "";
-                                                    String minPrice = "";
-                                                    String maxPrice = "";
-                                                    try {
-                                                        JSONArray priceRanges = event.getJSONArray("priceRanges");
-                                                        JSONObject priceRange = priceRanges.getJSONObject(0);
-                                                        currency = priceRange.getString("currency");
-                                                        minPrice = priceRange.getString("min");
-                                                        maxPrice = priceRange.getString("max");
-                                                    } catch (JSONException e) {
 
-                                                    }
 
-                                                    JSONObject embeddedEvent = event.getJSONObject("_embedded");
-                                                    JSONArray venues = embeddedEvent.getJSONArray("venues");
                                                     int venuesLength = venues.length();
                                                     for (int venuesIndex = 0; venuesIndex < venuesLength; venuesIndex++) {
 
-                                                        JSONObject venue = venues.getJSONObject(venuesIndex);
-                                                        JSONObject venueLocation = venue.getJSONObject("location");
-
-                                                        double venueLng = Double.parseDouble(venueLocation.get("longitude").toString());
-                                                        double venueLat = Double.parseDouble(venueLocation.get("latitude").toString());
-
-                                                        /// Create a new marker, add to marker list and to list for list view adapter
-                                                        if ((venueLng != 0d) && (venueLat != 0d)) {
+                                                        if(venues.getJSONObject(venuesIndex).has("location")){
+                                                            JSONObject venue = venues.getJSONObject(venuesIndex);
+                                                            JSONObject venueLocation = venue.getJSONObject("location");
+                                                            double venueLng = Double.parseDouble(venueLocation.get("longitude").toString());
+                                                            double venueLat = Double.parseDouble(venueLocation.get("latitude").toString());
                                                             LatLng venueCoordinates = new LatLng(venueLat, venueLng);
-                                                            Marker marker = mMap.addMarker(new MarkerOptions().position(venueCoordinates).title(eventName).snippet(startDateTime + " " + minPrice + currency + " - " + maxPrice + currency).icon(BitmapDescriptorFactory.fromResource(R.mipmap.ic_map_pin_azure)));
+                                                            Marker marker = mMap.addMarker(new MarkerOptions().position(venueCoordinates).title(eventName).snippet(startDateTime).icon(BitmapDescriptorFactory.fromResource(R.mipmap.ic_map_pin_azure)));
                                                             markers.add(marker);
-                                                            mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(venueCoordinates, 10));
-                                                            list.add(eventName + " (price from " + minPrice + currency + " to " + maxPrice + currency + ", start at " + startDateTime + ")");
+                                                            //mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(venueCoordinates, 10));
+                                                            list.add(eventName + " (start at " + startDateTime + ")");
                                                         }
+                                                        else{
+                                                            System.out.println("no location");
+                                                        }
+
+
+
                                                     }
                                                 }
 
@@ -266,6 +269,8 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                                             } catch (JSONException e) {
                                                 e.printStackTrace();
                                             } finally {
+                                                Event event = new Event();
+                                                events.add(event);
                                                 progressBar.setVisibility(View.INVISIBLE);
                                             }
                                         }
